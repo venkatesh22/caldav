@@ -44,7 +44,7 @@ class DAVClient:
     proxy = None
     url = None
 
-    def __init__(self, url, proxy=None, username=None, password=None):
+    def __init__(self, url, proxy=None, username=None, password=None, headers=None):
         """
         Sets up a HTTPConnection object towards the server in the url.
         Parameters:
@@ -68,6 +68,8 @@ class DAVClient:
         self.headers = {"User-Agent": "Mozilla/5.0",
                         "Content-Type": "text/xml",
                         "Accept": "text/xml"}
+        if headers:
+            self.headers.update(headers)
         if self.url.username is not None:
             username = urllib.unquote(self.url.username)
             password = urllib.unquote(self.url.password)

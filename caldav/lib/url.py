@@ -144,3 +144,6 @@ class URL:
 def make(url):
     """Backward compatibility"""
     return URL(url)
+
+def is_url(url):
+    return urlparse.urlparse(url).scheme != ""

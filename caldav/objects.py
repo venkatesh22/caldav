@@ -8,8 +8,10 @@ import re
 from lxml import etree
 
 from caldav.lib import error, vcal, url
-from caldav.lib.url import URL
+from caldav.lib.url import URL, is_url
 from caldav.elements import dav, cdav
+import httplib
+import logging
 
 
 class DAVObject(object):
@@ -64,23 +66,26 @@ class DAVObject(object):
 
         for r in response.tree.findall(dav.Response.tag):
             # We use canonicalized urls to index children
-            href = str(self.url.join(URL.objectify(r.find(dav.Href.tag).text)).canonical())
-            assert(href)
-            properties[href] = {}
-            for p in props:
-                t = r.find(".//" + p.tag)
-                if len(list(t)) > 0:
-                    if type is not None:
-                        val = t.find(".//" + type)
+            try:
+                href = str(self.url.join(URL.objectify(r.find(dav.Href.tag).text)).canonical())
+                assert(href)
+                properties[href] = {}
+                for p in props:
+                    t = r.find(".//" + p.tag)
+                    if len(list(t)) > 0:
+                        if type is not None:
+                            val = t.find(".//" + type)
+                        else:
+                            val = t.find(".//*")
+                        if val is not None:
+                            val = val.tag
+                        else:
+                            val = None
                     else:
-                        val = t.find(".//*")
-                    if val is not None:
-                        val = val.tag
-                    else:
-                        val = None
-                else:
-                    val = t.text
-                properties[href][p.tag] = val
+                        val = t.text
+                    properties[href][p.tag] = val
+            except Exception , e:
+                    logging.info("error %s" % e)
 
         for path in properties.keys():
             resource_type = properties[path][dav.ResourceType.tag]
@@ -154,6 +159,8 @@ class DAVObject(object):
             rc = properties[path]
         elif exchange_path in properties.keys():
             rc = properties[exchange_path]
+        elif self.url.url_raw in properties.keys():
+            rc = properties[self.url.url_raw]
         else:
             raise Exception("The CalDAV server you are using has "
                             "a problem with path handling.")
@@ -255,7 +262,7 @@ class Principal(DAVObject):
         self._calendar_home_set = None
         ## backwards compatibility.
         if url is not None:
-            self.url = client.url.join(URL.objectify(url))
+                self.url = client.url.join(URL.objectify(url))
         else:
             self.url = self.client.url
             cup = self.get_properties([dav.CurrentUserPrincipal()])
@@ -282,7 +289,13 @@ class Principal(DAVObject):
         if isinstance(url, CalendarSet):
             self._calendar_home_set = url
         else:
-            self._calendar_home_set = CalendarSet(self.client, self.client.url.join(URL.objectify(url)))
+            if not is_url(url):
+                self._calendar_home_set = CalendarSet(self.client, self.client.url.join(URL.objectify(url)))
+            else:
+                self.client.url = URL.objectify(url)
+                self.client.handle = httplib.HTTPSConnection(self.client.url.hostname,
+                                                  self.client.url.port)
+                self._calendar_home_set = CalendarSet(self.client, URL.objectify(url))
 
     def calendars(self):
         return self.calendar_home_set.calendars()
@@ -480,19 +493,18 @@ class Calendar(DAVObject):
 
         return all
 
-    def events_by_sync_token(self, sync_token=None):
-        import ipdb;ipdb.set_trace()
-        if not sync_token:
+#    def events_by_sync_token(self, sync_token=None):
+        #if not sync_token:
 #            body = """<d:propfind xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/"><d:prop><cs:getctag /><d:getetag /><d:sync-token /></d:prop></d:propfind>"""
 #            body = """<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:getctag /><d:getetag /><d:sync-token /><c:calendar-data /></d:prop><c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT" /></c:comp-filter></c:filter></c:calendar-query>"""
-            body = """<?xml version="1.0" encoding="UTF-8"?><A:propfind xmlns:A="DAV:"><A:prop><B:getctag xmlns:B="http://calendarserver.org/ns/"/><A:sync-token/></A:prop></A:propfind>"""
+            #body = """<?xml version="1.0" encoding="UTF-8"?><A:propfind xmlns:A="DAV:"><A:prop><B:getctag xmlns:B="http://calendarserver.org/ns/"/><A:sync-token/></A:prop></A:propfind>"""
 #            body = """<?xml version="1.0" encoding="utf-8" ?><D:sync-collection xmlns:D="DAV:"><D:sync-token/><D:sync-level>1</D:sync-level><D:prop><D:getetag/></D:prop></D:sync-collection>"""
 #            body = """<?xml version="1.0" encoding="UTF-8"?><D:propfind xmlns:D="DAV:"><D:allprop/></D:propfind>"""
-            print body
-            ret = self.client.propfind(self.url, body, 1)
-            if ret.status == 404:
-                raise error.NotFoundError
-            return ret
+            #print body
+            #ret = self.client.propfind(self.url, body, 1)
+            #if ret.status == 404:
+                #raise error.NotFoundError
+            #return ret
 #            props = [dav.DisplayName(), dav.SyncToken() ]
 #            props.append(dav.DisplayName())
 #            response = self._query_properties(props, 0)
@@ -546,9 +558,9 @@ class Event(DAVObject):
             self.etag = headers.get('etag')
         else:
             event = self.parent.event_by_uid(id)
+            self.etag = event.etag
         self.url = URL.objectify(path)
         self.id = id
-        self.etag = event.etag
 
     def save(self):
         """
@@ -584,3 +596,4 @@ class Event(DAVObject):
         return self._instance
     instance = property(get_instance, set_instance,
                         doc="vobject instance of the event")
+

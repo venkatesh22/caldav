@@ -162,6 +162,11 @@ class DAVObject(object):
         elif self.url.url_raw in properties.keys():
             rc = properties[self.url.url_raw]
         else:
+            for value in properties.values():
+                if dav.CurrentUserPrincipal().tag in value:
+                    return value
+                if cdav.CalendarHomeSet().tag in value:
+                    return value
             raise Exception("The CalDAV server you are using has "
                             "a problem with path handling.")
 

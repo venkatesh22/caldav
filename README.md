@@ -1,4 +1,4 @@
 caldav
 ======
 
-caldav client library with some additional changes
+caldav client library clone of https://bitbucket.org/cyrilrbt/caldav/wiki/Home with some additional changes
